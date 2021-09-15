@@ -2,8 +2,8 @@ import os
 import json
 import threading
 import csv
-import uuid
-import time
+from types import SimpleNamespace
+import typing
 import queue 
 
 import pandas as pd
@@ -18,7 +18,6 @@ import init_model
 
 
 class TaskQueue(queue.Queue):
-
     def __init__(self, num_workers=1):
         queue.Queue.__init__(self)
         self.num_workers = num_workers
@@ -42,13 +41,33 @@ class TaskQueue(queue.Queue):
 
 
 
-def getCell(cell_size_m: float, xdist: float, ydist: float):
+def getCell(cell_size_m: float, xdist: float, ydist: float) -> typing.Tuple[int, int]:
+    """
+    returns row and column number for given distances in x and y dimension
+
+    Args:
+        cell_size_m (float): cell size in meters
+        xdist (float): distance in x direction in meters
+        ydist (float): distance in y direction in meters
+
+    Returns:
+        int, int: row and column number
+    """
     col = int(ydist / cell_size_m)
     row = int(xdist / cell_size_m)
     return row, col
 
 
-def adapt_pickle_REM(city, range=25, offset_per_cell=False):
+
+def adapt_pickle_REM(city:str, range:int = 25, offset_per_cell:bool = False):
+    """
+    reads existing pickle file and adapts it by inserting the averaged RSRP values
+
+    Args:
+        city (str): city acronym ('aa', 'ko', 'wu', 'do')
+        range (int, optional): cell size in meters used for averaging measurement values. Defaults to 25.
+        offset_per_cell (bool, optional): indicates whether to use offset fitted per cell or by area and frequency. Defaults to False.
+    """
     if city == 'do':
         for area in args.areas:
             if offset_per_cell:
@@ -256,7 +275,13 @@ def adapt_pickle_REM(city, range=25, offset_per_cell=False):
                 print('\n saved ' + month + '_' + height + ' as pkl')
 
 
-def adapt_pickle_offset(city):
+def adapt_pickle_offset(city:str):
+    """
+    reads existing pickle file and adapts it by inserting the fitted offset per cell
+
+    Args:
+        city (str): city acronym ('aa', 'ko', 'wu', 'do')
+    """
     if city == 'do':
         for area in args.areas:
             path = args.base_path + 'dataset_processed/dortmund/' + area + '.pkl'
@@ -371,8 +396,15 @@ def adapt_pickle_offset(city):
                 print('\n saved ' + month + '_' +  height + ' as pkl')
 
 
-def generate_pickle_REM(path, offset_per_cell=False):
-    # read json files and generate pickle file
+def generate_pickle_REM(path:str, offset_per_cell:bool = False):
+    """
+    reads feature csv file and saves it as pickled pandas dataframe
+
+    Args:
+        path (str): base path, where REM data is
+        offset_per_cell (bool, optional): indicates whether to use fitted offset per cell. Defaults to False.
+    """
+
     print("generate pickle files")
 
     bar = IncrementalBar('read features' , max = len(os.listdir(path)))
@@ -425,8 +457,16 @@ def generate_pickle_REM(path, offset_per_cell=False):
             bar.next()
 
 
-def generate_pickle(city, corPos=True, mappedHeights=True):
-    # read json files and generate pickle file
+def generate_pickle(city:str, corPos:bool = True, mappedHeights:bool = True):
+    """
+    reads the single json files holding the featues, creates a pandas Dataframe and saves it as a pickle file
+
+    Args:
+        city (str): city acronym ('aa', 'ko', 'wu', 'do')
+        corPos (bool, optional): indicates whether the manually corrected positions should be used or not. Defaults to True.
+        mappedHeights (bool, optional): indicates whether the inserted building heights of other sources should be used or not. Defaults to True.
+    """
+
     print("generate pickle files")
 
     if city == 'do':
@@ -567,7 +607,16 @@ def generate_pickle(city, corPos=True, mappedHeights=True):
         print('\n saved wuppertal as pkl')
 
 
-def generate_csv(city, offset_per_cell=False, REM=False):
+def generate_csv(city:str, offset_per_cell:bool = False, REM:bool = False):
+    """
+    reads features pickle file and saves it as csv file
+
+    Args:
+        city (str): city acronym ('aa', 'ko', 'wu', 'do')
+        offset_per_cell (bool, optional): indicates whether to use offset per cell or per area and frequency. Defaults to False.
+        REM (bool, optional): indicates whether to use averaged measurement values or not. Defaults to False.
+    """
+
     file_ending = ''
     if offset_per_cell:
         file_ending += '_offset_per_cell'
@@ -600,7 +649,18 @@ def generate_csv(city, offset_per_cell=False, REM=False):
             print('\n saved ' + area + ' as csv')
 
 
-def process_data_REM(path, args):
+def process_data_REM(args:SimpleNamespace, path:str) -> pd.DataFrame:
+    """
+    read pickled dataframe and edit columns
+
+    Args:
+        args (SimpleNamespace): global variables
+        path (str): path to dataframe
+
+    Returns:
+        pd.DataFrame: adapted dataframe
+    """
+
     print('read data')
 
     samples = pd.read_pickle(path)
@@ -623,7 +683,18 @@ def process_data_REM(path, args):
     return samples
 
 
-def process_data(args, seed=200):
+def process_data(args:SimpleNamespace, seed:int = 200) -> typing.Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, StandardScaler, StandardScaler, list]:
+    """
+    reads datasets specified in args, processes them and returns train, validation, and test set together with a target and input scaler as well as a list of strings holding the utilized feature names
+
+    Args:
+        args (SimpleNamespace): global variables
+        seed (int, optional): random seed. Defaults to 200.
+
+    Returns:
+        pd.DataFrame, pd.DataFrame, pd.DataFrame, StandardScaler, StandardScaler, list: train set, validation set, test set, input sacler, target scaler, column names
+    """
+
     print('read data')
 
     file_ending_do = ''
@@ -802,8 +873,21 @@ def process_data(args, seed=200):
     return train_set, val_set, test_set, input_scaler, target_scaler, columns
 
 
+def edit_columns(args:SimpleNamespace, samples:pd.DataFrame) -> pd.DataFrame:
+    """
+    adapt raw dataframe features:
+    - delete unnecessary columns
+    - calculate path loss
+    - calculate delta values
+    - calculate target values
 
-def edit_columns(args, samples):
+    Args:
+        args (SimpleNamespace): global variables
+        samples (pd.DataFrame): samples to adapt
+
+    Returns:
+        pd.DataFrame: adapted samples
+    """
     # add path loss
     B = samples["bandwidth"].to_numpy()
     f = samples["frequency"].to_numpy()
@@ -843,8 +927,18 @@ def edit_columns(args, samples):
     return samples
 
 
+def process_images_REM(path:str, size:int, _range:int, enable_threading:bool = True, number_threads:int = 8, sv:bool = True):
+    """
+    transforms eps images to png images
 
-def process_images_REM(path, size, _range, enable_threading=True, number_threads=8, sv=True):
+    Args:
+        path (str): path to REM dataset
+        size (int): size of resulting png images in pixel
+        _range (int): covered range in eps images
+        enable_threading (bool, optional): indicates whether to enable threading or not. Defaults to True.
+        number_threads (int, optional): number of threads used for transformation. Defaults to 8.
+        sv (bool, optional): indicates whether to transform side view or top view images. Defaults to True.
+    """
     # identify folder
     if _range != -1:
         folder = str(_range) + 'm/'
@@ -882,7 +976,21 @@ def process_images_REM(path, size, _range, enable_threading=True, number_threads
                     bar.next()
 
 
-def process_images(city, size, _range, enable_threading=True, number_threads=8, sv=True, corPos=True, mappedHeights=True):
+def process_images(city: str, size: int, _range: int, enable_threading:bool = True , number_threads:int = 8, sv:bool = True, corPos:bool = True, mappedHeights:bool = True):
+    """
+    reads the eps images and converts it to png images
+
+    Args:
+        city (str): city acronym ('aa', 'do', 'wu', 'ko')
+        size (int): size of the resulting png file in pixel
+        _range (int): depicted range in meters (-1 for full range)
+        enable_threading (bool, optional): indicates whether to enable threading or not. Defaults to True.
+        number_threads (int, optional): number of threads to use. Defaults to 8.
+        sv (bool, optional): True for converting side view images, False for converting top view images. Defaults to True.
+        corPos (bool, optional): indicates whether to use the transmitter's corrected positions or not. Defaults to True.
+        mappedHeights (bool, optional): indicates whether to use the inserted building heights of another source or not. Defaults to True.
+    """
+
     # identify folder
     if _range != -1:
         folder = str(_range) + 'm/'
@@ -1008,8 +1116,6 @@ def process_images(city, size, _range, enable_threading=True, number_threads=8, 
                 if filename.endswith('.eps'):
                     eps2png(args, city, size, folder, path + filename)
                 bar.next()
-
-
 
 
 if __name__ == '__main__':
